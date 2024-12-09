@@ -84,8 +84,8 @@ def test(task_key, configs, dev_id=None):
     print(task_key, "use", time_cost, "ms")
     print()
 
-def schedule_with_config_local():
-    with open("/home/retina/skw/work/AutoScheduler/gemm_conv.log", 'r') as f:
+# def schedule_with_config_local():
+#     with open("/home/retina/skw/work/AutoScheduler/gemm_conv.log", 'r') as f:
         
 
 """

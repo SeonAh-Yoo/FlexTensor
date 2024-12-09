@@ -22,7 +22,8 @@ def evaluate(name, s, bufs, target, dev_id, number=10, rpc_info=None, result_gen
     else:
         use_rpc, target_host, fcompile = None, None, None
 
-    remote = rpc_info.get_remote()
+    # remote = rpc_info.get_remote()
+    remote = None
     dev = (remote if remote else tvm).device(target, dev_id)
 
     np_arys = [
@@ -112,3 +113,6 @@ def init_arg_parser(parser):
     parser.add_argument("--fcompile", type=str, choices=["ndk"])
     parser.add_argument("--port", type=int, default=9190)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--N", type=int, default=32)
+    parser.add_argument("--M", type=int, default=32)
+    parser.add_argument("--K", type=int, default=32)

@@ -507,3 +507,86 @@ class WalkerGroup(object):
     def clear_data(self):
         self.clear_performance_data()
         self.clear_walker_data
+
+class PerformanceModel_ANNS(nn.Module):
+    def __init__(self):
+        super(PerformanceModel_ANNS, self).__init__()        
+        self.final = nn.Sequential(
+            nn.Linear(128+128, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1)
+        )
+
+        self.fus0 = nn.Embedding(2, 32)
+        self.fus1 = nn.Embedding(2, 32)
+        self.fus2 = nn.Embedding(2, 32)
+        self.spa0 = nn.Embedding(11, 32)
+        self.spa1 = nn.Embedding(11, 32)
+        self.spa2 = nn.Embedding(11, 32)
+        self.spa3 = nn.Embedding(11, 32)
+        self.spa4 = nn.Embedding(11, 32)
+        self.spa5 = nn.Embedding(11, 32)
+        self.spa6 = nn.Embedding(11, 32)
+        self.spa7 = nn.Embedding(11, 32)
+        self.red0 = nn.Embedding(11, 32)
+        self.red1 = nn.Embedding(11, 32)
+        self.red2 = nn.Embedding(11, 32)
+        self.reorder = nn.Embedding(2, 32)
+        self.unr0 = nn.Embedding(4, 32)
+        self.unr1 = nn.Embedding(4, 32)
+        
+        self.shape_embedding = nn.Sequential(
+            nn.Linear(3, 64),
+            nn.ReLU(), 
+            nn.Linear(64, 128)
+        )
+        
+        self.schedule_embedding = nn.Sequential(
+            nn.Linear(32*17,128),
+            nn.ReLU(),
+            nn.Linear(128,128),
+        )
+        
+    def embed_shapes(self, x):
+        return self.shape_embedding(x)
+    
+    def embed_parameters(self, y) :
+        fus0 = self.fus0(y[0].long())
+        fus1 = self.fus1(y[1].long())
+        fus2 = self.fus2(y[2].long())
+        spa0 = self.spa0(y[3].long())
+        spa1 = self.spa1(y[4].long())
+        spa2 = self.spa2(y[5].long())
+        spa3 = self.spa3(y[6].long())
+        spa4 = self.spa4(y[7].long())
+        spa5 = self.spa5(y[8].long())
+        spa6 = self.spa6(y[9].long())
+        spa7 = self.spa7(y[10].long())
+        red0 = self.red0(y[11].long())
+        red1 = self.red1(y[12].long())
+        red2 = self.red2(y[13].long())
+        reorder = self.reorder(y[14].long())
+        unr0 = self.unr0(y[15].long())
+        unr1 = self.unr1(y[16].long())
+        
+        y = torch.cat((fus0,fus1,fus2,spa0,spa1,spa2,spa3,spa4,spa5,spa6,spa7,red0,red1,red2,reorder,unr0,unr1), dim=0)
+        y = self.schedule_embedding(y)
+        
+        return y
+    
+    def forward_after_query(self, x, y):
+        y = self.embed_parameters(y)
+        xy = torch.cat((x,y), dim=0)
+        xy = self.final(xy)
+        return xy
+
+    def forward(self, x, y):
+        x = self.embed_shapes(x)
+        y = self.embed_parameters(y)
+        xy = torch.cat((x,y), dim=0)
+        xy = self.final(xy)
+        return xy

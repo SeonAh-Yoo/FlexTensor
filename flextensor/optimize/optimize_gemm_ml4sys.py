@@ -61,10 +61,13 @@ def optimize(shapes, slevel=4, rlevel=3, target="llvm", dev_id=0, timeout=4.0, t
         ret[task.key] = configs
         string = json.dumps(configs)
         line = task.key + ":" + string
-        print(line, file=logfile, flush=True)
+        
         s, bufs = schedule_with_config(task.key, configs)
         time_cost = evaluate(task.key, s, bufs, target,
                              dev_id, rpc_info=rpc_info)
+        
+        line += ":" + str(time_cost)
+        print(line, file=logfile, flush=True)
         print("Use", time_cost, "ms")
         print("Cost", end - beg, "s")
         print()
@@ -77,14 +80,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # shapes = [(2 ** n, 2 ** n, 2 ** n) for n in range(7, 13)] + [(256, 128, 128),
     #                                                              (128, 256, 128), (128, 128, 256), (128, 256, 256), (256, 128, 256), (256, 256, 128)]
-    shapes = [(256, 128, 128), (256, 256, 256)]
+    # shapes = [(2 ** i, 2 ** j, 2 ** k) for i in range(5, 11) for j in range(5, 11) for k in range(5, 11)]
+    shapes = [(32, 32, 64)]
     rpc_info = RpcInfo(args.host, args.port, args.target_host,
                        args.device_key, args.use_rpc, args.fcompile, args.timeout)
 
-    if args.to < 0:
-        end = len(shapes)
-    else:
-        end = args.to
+    # if args.to < 0:
+    #     end = len(shapes)
+    # else:
+    #     end = args.to
 
     if args.test != "":
         with open(args.test, "r") as fin:
@@ -98,7 +102,7 @@ if __name__ == "__main__":
     elif args.log != "":
         with open(args.log, "a") as flog:
             ret = optimize(
-                shapes[args.from_:end],
+                [(args.N, args.M, args.K)],
                 slevel=args.slevel,
                 rlevel=args.rlevel,
                 target=args.target,
@@ -109,11 +113,11 @@ if __name__ == "__main__":
                 use_model=args.use_model,
                 method=args.method,
                 logfile=flog,
-                rpc_info=rpc_info
+                # rpc_info=rpc_info
             )
     else:
         ret = optimize(
-            shapes[args.from_:end],
+            shapes[args.from_:-1],
             slevel=args.slevel,
             rlevel=args.rlevel,
             target=args.target,

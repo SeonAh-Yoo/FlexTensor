@@ -530,7 +530,7 @@ for shape in gemv_shapes:
 
 for shape in gemm_shapes:
     N, K, M = shape
-    for j in range(4):
+    for j in range(8):
         register_task(Task("gemm", "gemm", gemm, (N, K, M), "llvm", j))
         register_task(Task("gemm", "gemm", gemm, (N, K, M), "cuda", j))
         register_task(Task("gemm", "gemm", gemm, (N, K, M), "opencl", j))

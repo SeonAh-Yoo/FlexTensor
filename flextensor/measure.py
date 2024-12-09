@@ -88,9 +88,10 @@ def build_and_eval(lib, s, bufs, target, dev_id, rpc_info: RpcInfo = None, numbe
 
     tvm_arys = []
     try:
-        func.export_library(lib, fcompile)
+        func.export_library(lib, fcompile=fcompile)
         # print("Connecting...")
-        remote = rpc_info.get_remote()
+        # remote = rpc_info.get_remote()
+        remote = None
         # print("Allocating...")
         ctx = (remote if remote else tvm).device(target, dev_id)
         for buf in bufs:
