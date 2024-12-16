@@ -32,19 +32,35 @@ def optimize(shapes, slevel=4, rlevel=3, target="llvm", dev_id=0, timeout=4.0, t
             dev_id
         )
         beg = time.time()
-        s, bufs, configs = schedule(
-            task.key,
-            slevel=slevel,
-            rlevel=rlevel,
-            op_trial=trials,
-            timeout=timeout,
-            op_stop=trials // 2,
-            method=method,
-            use_model=use_model,
-            parallel=parallel,
-            rpc_info=rpc_info,
-            number=10
-        )
+        if use_model:
+            s, bufs, configs = schedule(
+                task.key,
+                slevel=slevel,
+                rlevel=rlevel,
+                op_trial=trials,
+                timeout=timeout,
+                op_stop=trials // 2,
+                method=method,
+                use_model=False,
+                parallel=parallel,
+                rpc_info=rpc_info,
+                number=10,
+                op_perf_model_path=[(0, "model.pkl")]
+            )
+        else:
+            s, bufs, configs = schedule(
+                task.key,
+                slevel=slevel,
+                rlevel=rlevel,
+                op_trial=trials,
+                timeout=timeout,
+                op_stop=trials // 2,
+                method=method,
+                use_model=False,
+                parallel=parallel,
+                rpc_info=rpc_info,
+                number=10,
+            )
         end = time.time()
         # print(tvm.lower(s, bufs, simple_mode=True))
         print("###################################### [%.6f]" % time.time())
@@ -54,10 +70,10 @@ def optimize(shapes, slevel=4, rlevel=3, target="llvm", dev_id=0, timeout=4.0, t
             for name, value in config.items():
                 if value:
                     print(name, value)
-        print("graph schedules:")
-        for name, value in configs.graph_config.items():
-            if value:
-                print(name, value)
+        # print("graph schedules:")
+        # for name, value in configs.graph_config.items():
+        #     if value:
+        #         print(name, value)
         ret[task.key] = configs
         string = json.dumps(configs)
         line = task.key + ":" + string

@@ -245,7 +245,8 @@ class WalkerGroup(object):
         self.visit = set()
         self.performance_judger = PerformanceModel(self.space.dim)
         self.perfromance_data = []
-        self.model_path = global_performance_judger_path_prefix + group_name + ".pkl"
+        # self.model_path = global_performance_judger_path_prefix + group_name + ".pkl"
+        self.model_path = "model.pkl"
         self.data_path = global_performance_data_path_prefix + group_name + ".txt"
 
     def forward(self, batch_size, policy="random"):
@@ -453,7 +454,10 @@ class WalkerGroup(object):
         if not inputs:
             return []
         perf_lst = self.performance_judger(torch.FloatTensor(inputs)).reshape(-1)
-        return perf_lst.detach().tolist()
+        ret = perf_lst.detach().tolist()
+        ret = [float("inf") if i == 0.0 else i for i in ret]
+        # print("ret", ret)
+        return ret
 
     def load_performance_judger(self, model_path):
         self.performance_judger.load_state_dict(torch.load(model_path))

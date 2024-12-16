@@ -8,10 +8,6 @@ import signal
 from queue import Empty
 from typing import List
 
-import flextensor.project.tensor_graph.ops as ops
-from flextensor.topk_search import _anns_schedule
-from flextensor.train_anns import _evaluate
-
 from concurrent.futures import ProcessPoolExecutor
 from collections import deque
 from flextensor.task import TASK_TABLE
@@ -28,6 +24,9 @@ from flextensor.measure import build_and_eval, master_routine, mp
 from functools import partial
 from tempfile import mkstemp, mkdtemp
 from .space import Space
+
+from flextensor.a3c_utils import A3CNetwork, A3CWorker, A3CStateSpace
+import torch.optim as optim
 
 try:
     import psutil
@@ -220,7 +219,6 @@ class Scheduler(object):
         self.re_evalutate_number = 10
         self.warm_up_epoch = 20
         self.warm_up_number = 20
-        
 
         self._pool = None
 
@@ -284,6 +282,37 @@ class Scheduler(object):
                 warm_up_enough = True
         self.timeout = old_timeout
 
+    def _a3c_schedule(self, configs, type_keys, use_model=False):
+        # Initialize state space
+        state_space = A3CStateSpace(self.space)
+
+        # Initialize global A3C model
+        global_model = A3CNetwork(state_space.state_dim, state_space.action_dim)
+        optimizer = optim.Adam(global_model.parameters(), lr=1e-4)
+
+        # Create A3C workers
+        workers = []
+        for i in range(self.parallel):
+            worker = A3CWorker(
+                worker_id=i,
+                global_model=global_model,
+                optimizer=optimizer,
+                state_space=state_space,
+                configs=self,
+            )
+            workers.append(worker)
+
+        # Start all workers
+        for worker in workers:
+            worker.start()
+
+        # Wait for all workers to complete
+        for worker in workers:
+            worker.join()
+
+        # Return the best configuration found
+        return self.walker_group.to_config(self.walker_group.top1())
+        
     def _random_schedule(self, configs, type_keys, use_model=False):
         # prepare model
         if use_model:
@@ -448,7 +477,7 @@ class Scheduler(object):
 
     def _q_schedule(self, configs, type_keys, use_model=False):
         # prepare model
-        # self.walker_group.load_walker_model()
+        self.walker_group.load_walker_model()
         if use_model:
             self.walker_group.load_or_create_model()
         # warm up
@@ -540,56 +569,9 @@ class Scheduler(object):
                     best_value = self.walker_group.top1_value()
                     best = self.walker_group.top1()
         # dump data at last
-        self.walker_group.dump_data()
+        # self.walker_group.dump_data()
         self.walker_group.clear_data()
         return self.walker_group.to_config(best)
-
-    def _nns_schedule(self, args, task_key):
-        nns_res = _anns_schedule(args)
-        
-        res = []
-        res_cost = []
-        fuse_ = [1<<p for p in range(2)]
-        spa_red_ = [1<<p for p in range(11)]
-        unroll_ = [0, 1, 512, 1500]
-        
-        task = TASK_TABLE[task_key]
-        print(task.args)
-        tvm_op_lst, tvm_bufs = ops.GEMM(task.args[0], task.args[1], task.args[2])
-        target = "cuda"
-        dev_id = 0
-        
-        best_value = float("inf")
-        best_index = 0
-        
-        for i, r in enumerate(nns_res):
-            ret = dict()
-            ret["fuse"] = [[fuse_[int(i)] for i in r[:3]]]
-            ret["spatial"] = [[spa_red_[int(i)] for i in r[3:7]], [spa_red_[int(i)] for i in r[7:11]]]
-            ret["reduce"] = [[spa_red_[int(i)] for i in r[11:14]]]
-            ret["reorder"] = [[int(r[14])]]
-            ret["inline"] = []
-            ret["unroll"] = [[unroll_[int(i)] for i in r[15:17]]]
-            ret["merge"] = []
-            ret["special"] = []
-            res.append(ret)
-            
-            config = Config([ret], None)
-            s, bufs = schedule_with_config_ops(tvm_op_lst, tvm_bufs, config, target=target)
-            try:
-                dec_cost = _evaluate(s, bufs, target, dev_id, number=10)
-            except Exception as e:
-                dec_cost = str(e)
-                
-            if not isinstance(dec_cost, float):
-                dec_cost = float("inf")
-                
-            res_cost.append(dec_cost)
-            if best_value > dec_cost:
-                best_value = dec_cost
-                best_index = i
-        
-        return res[best_index]
 
     def parallel_evaluate(self, old_configs, new_configs, number=1):
         raise NotImplementedError()
@@ -825,7 +807,7 @@ class OpScheduler(Scheduler):
                                           early_stop, rpc_info, rewrite=rewrite)
         self.op_pos = op_pos
 
-    def schedule(self, configs, method="searching", use_model=False, perf_path=None, args=None, task_key=None):
+    def schedule(self, configs, method="searching", use_model=False, perf_path=None):
         # if hint == "split_fuse":
         #     wanted_types = ["spatial", "reduce", "unroll"]
         # elif hint == "fuse_split":
@@ -841,8 +823,8 @@ class OpScheduler(Scheduler):
             return self._q_schedule(configs, wanted_types, use_model=use_model)
         elif method == "random":
             return self._random_schedule(configs, wanted_types, use_model=use_model)
-        elif method == "nns":
-            return self._nns_schedule(args, task_key)
+        elif method == "a3c":
+            return self._a3c_schedule(configs, wanted_types, use_model=use_model)
         else:
             raise RuntimeError("Currently no support for method %s" % method)
 
@@ -931,8 +913,8 @@ class GraphScheduler(Scheduler):
             return self._q_schedule(configs, ["inline", "merge"], use_model=use_model)
         elif method == "random":
             return self._random_schedule(configs, ["inline", "merge"], use_model=use_model)
-        elif method == "not_use":
-            return self.walker_group.to_config({})
+        elif method == "a3c":
+            return self._a3c_schedule(configs, ["inline", "merge"], use_model=use_model)
         else:
             raise RuntimeError("Currently no support for method %s" % method)
 
@@ -1031,7 +1013,6 @@ def schedule(task_key, slevel=4, rlevel=3, op_trial=50, graph_trial=10, op_stop=
     task = TASK_TABLE[task_key]
     func = task.func
     args = task.args
-    print(func.__name__)
     ops, bufs = func(*args)
     # sort the ops, so that we can distinguish each op
     op_lst, down_graph = flatten_graph(ops)
@@ -1111,8 +1092,8 @@ def schedule(task_key, slevel=4, rlevel=3, op_trial=50, graph_trial=10, op_stop=
             rpc_info=rpc_info,
             rewrite=rewrite
         )
-        print("###########################################")
-        print("Scheduling", op)
+        # print("###########################################")
+        # print("Scheduling", op)
         use_model = False if op_perf_model_path_lst[pos] is None else True
         perf_path = op_perf_model_path_lst[pos]
         if force_inline and graph_space.subspaces["inline"].able_inline(pos):
@@ -1123,8 +1104,6 @@ def schedule(task_key, slevel=4, rlevel=3, op_trial=50, graph_trial=10, op_stop=
                 method=method,
                 use_model=use_model,
                 perf_path=perf_path,
-                args=args,
-                task_key=task_key,
             )
         configs.op_config_lst.append(op_config)
 
@@ -1132,7 +1111,6 @@ def schedule(task_key, slevel=4, rlevel=3, op_trial=50, graph_trial=10, op_stop=
 
     #################################################
     # inter operations schedule decisions 
-    # beg = time.time()
     graph_scheduler = GraphScheduler(
         task_key,
         graph_space,
@@ -1145,13 +1123,10 @@ def schedule(task_key, slevel=4, rlevel=3, op_trial=50, graph_trial=10, op_stop=
         rewrite=rewrite
     )
     use_model = False if graph_perf_model_path is None else True
-    graph_config = graph_scheduler.schedule(configs, method="not_use", use_model=use_model,
+    graph_config = graph_scheduler.schedule(configs, method=method, use_model=use_model,
                                             perf_path=graph_perf_model_path)
-    # end = time.time()
-    # print("graph schedule: ", end - beg, "s")
     #################################################
     # combine the configs
-    # configs = Config(configs.op_config_lst, None)
     configs = Config(configs.op_config_lst, graph_config)
 
     #################################################
