@@ -42,7 +42,7 @@ To run the baselines, `PyTorch` is required.
     ./run_gemm_anns.sh
     ```
 
-You can see results in `debug_N_M_K_1210_method.log`.
+You can see results in `1210/debug_N_M_K_1210_method.log`.
 
 ### 2. A3C Implementation
 The implementation of A3C has not yet been completed.
