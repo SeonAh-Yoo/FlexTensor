@@ -19,7 +19,7 @@ To run the baselines, `PyTorch` is required.
 
 ### 1. Reproduce experiment results related to ANNS
 
-0. move into `flextensor` folder
+0. move into `flextensor` folder & make `1210` folder
 
 1. p-method without performance model
     ```sh
